@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ViewState, Loan, Covenant, LoanStatus, ComplianceStatus, TimelineEventType, TimelineEvent, LoanDNA } from './types';
 import LandingView from './views/LandingView';
 import DashboardView from './views/DashboardView';
@@ -9,10 +9,25 @@ import SettingsView from './views/SettingsView';
 import AuthView from './views/AuthView';
 import { LayoutDashboard, List, FileText, Settings, Menu, X, Upload, Sparkles, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MOCK_LOANS } from './constants';
+// import { MOCK_LOANS } from './constants'; // Commented out - using API data now
 import { Modal } from './components/ui/Modal';
 import { Input, Select } from './components/ui/Input';
 import { extractLoanDNA, generateRiskPredictions, generateTimelineEvent } from './services/geminiService';
+import apiService, { 
+  isAuthenticated as checkAuth, 
+  getStoredUser, 
+  logout as apiLogout,
+  getLoans as fetchLoans,
+  getLoan as fetchLoan,
+  createLoan as apiCreateLoan,
+  updateLoan as apiUpdateLoan,
+  deleteLoan as apiDeleteLoan,
+  createCovenant as apiCreateCovenant,
+  updateCovenant as apiUpdateCovenant,
+  createTimelineEvent as apiCreateTimelineEvent,
+  createLoanDNA as apiCreateLoanDNA,
+  createRiskPrediction as apiCreateRiskPrediction,
+} from './services/apiService';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -108,10 +123,12 @@ const MobileHeader = ({ onMenuClick, title }: { onMenuClick: () => void; title: 
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('LANDING');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loans, setLoans] = useState<Loan[]>(MOCK_LOANS);
+  const [isAuthenticated, setIsAuthenticated] = useState(checkAuth());
+  // const [loans, setLoans] = useState<Loan[]>(MOCK_LOANS); // Commented out - using API data now
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [selectedLoanId, setSelectedLoanId] = useState<string | undefined>(undefined);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Modal States
   const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
@@ -127,6 +144,89 @@ const App: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<'idle' | 'uploading' | 'extracting' | 'done'>('idle');
   const [extractedDNA, setExtractedDNA] = useState<LoanDNA | null>(null);
   const [targetLoanIdForUpload, setTargetLoanIdForUpload] = useState<string | null>(null);
+
+  // Load loans from API on mount and when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadLoans();
+    }
+  }, [isAuthenticated]);
+
+  // Check if already authenticated on mount
+  useEffect(() => {
+    if (checkAuth()) {
+      setIsAuthenticated(true);
+      setView('DASHBOARD');
+    }
+  }, []);
+
+  const loadLoans = async () => {
+    setIsLoading(true);
+    try {
+      const loansData = await fetchLoans();
+      // Transform API response to match frontend Loan type
+      const transformedLoans: Loan[] = loansData.map((loan: any) => ({
+        id: loan.id,
+        borrower: loan.borrower,
+        amount: Number(loan.amount),
+        currency: loan.currency,
+        interestRate: Number(loan.interestRate),
+        startDate: loan.startDate,
+        maturityDate: loan.maturityDate,
+        status: loan.status as LoanStatus,
+        complianceScore: loan.complianceScore,
+        covenants: (loan.covenants || []).map((cov: any) => ({
+          id: cov.id,
+          title: cov.title,
+          type: cov.type,
+          dueDate: cov.dueDate,
+          status: cov.status as ComplianceStatus,
+          value: cov.value,
+          threshold: cov.threshold,
+          description: cov.description,
+          frequency: cov.frequency,
+          waiverReason: cov.waiverReason,
+          waiverDate: cov.waiverDate,
+          waiverApprovedBy: cov.waiverApprovedBy,
+        })),
+        riskSummary: loan.riskSummary,
+        timelineEvents: (loan.timelineEvents || []).map((evt: any) => ({
+          id: evt.id,
+          type: evt.type as TimelineEventType,
+          date: evt.date,
+          title: evt.title,
+          description: evt.description,
+          relatedCovenantId: evt.relatedCovenantId,
+          metadata: evt.metadata,
+        })),
+        loanDNA: loan.loanDNA ? {
+          extractedAt: loan.loanDNA.extractedAt,
+          sourceDocument: loan.loanDNA.sourceDocument,
+          confidence: loan.loanDNA.confidence,
+          keyTerms: loan.loanDNA.key_terms || loan.loanDNA.keyTerms,
+          extractedCovenants: loan.loanDNA.extractedCovenants || [],
+          riskFactors: loan.loanDNA.riskFactors || [],
+          summary: loan.loanDNA.summary,
+        } : undefined,
+        riskPredictions: (loan.riskPredictions || []).map((pred: any) => ({
+          covenantId: pred.covenantId,
+          covenantTitle: pred.covenantTitle,
+          currentValue: pred.currentValue,
+          threshold: pred.threshold,
+          predictedBreachDate: pred.predictedBreachDate,
+          probability: pred.probability,
+          trend: pred.trend,
+          explanation: pred.explanation,
+        })),
+        uploadedDocuments: loan.uploadedDocuments || [],
+      }));
+      setLoans(transformedLoans);
+    } catch (error) {
+      console.error('Failed to load loans:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Get current page title for mobile header
   const getPageTitle = () => {
@@ -145,10 +245,13 @@ const App: React.FC = () => {
   const handleLogin = () => {
     setIsAuthenticated(true);
     setView('DASHBOARD');
+    loadLoans(); // Load loans after login
   };
 
   const handleLogout = () => {
+    apiLogout(); // Clear tokens
     setIsAuthenticated(false);
+    setLoans([]); // Clear loans
     setView('AUTH');
   };
 
@@ -158,96 +261,169 @@ const App: React.FC = () => {
     window.scrollTo(0,0);
   };
 
-  const handleSaveLoan = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveLoan = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    const now = new Date().toISOString().split('T')[0];
-    const newLoan: Loan = {
-        id: editingLoan ? editingLoan.id : `ln_${Date.now()}`,
-        borrower: formData.get('borrower') as string,
-        amount: Number(formData.get('amount')),
-        currency: formData.get('currency') as string,
-        interestRate: Number(formData.get('interestRate')),
-        startDate: formData.get('startDate') as string,
-        maturityDate: formData.get('maturityDate') as string,
-        status: LoanStatus.Active,
-        complianceScore: editingLoan ? editingLoan.complianceScore : 100,
-        covenants: editingLoan ? editingLoan.covenants : [],
-        timelineEvents: editingLoan ? editingLoan.timelineEvents : [
-          {
-            id: `evt_${Date.now()}`,
-            type: TimelineEventType.LoanCreated,
-            date: now,
-            title: 'Loan Facility Created',
-            description: `New loan facility created for ${formData.get('borrower')} with principal amount of ${formData.get('currency')} ${Number(formData.get('amount')).toLocaleString()}.`,
-          }
-        ],
-        uploadedDocuments: editingLoan?.uploadedDocuments || [],
-        loanDNA: editingLoan?.loanDNA,
-        riskPredictions: editingLoan?.riskPredictions,
+    const loanData = {
+      borrower: formData.get('borrower') as string,
+      amount: Number(formData.get('amount')),
+      currency: formData.get('currency') as string,
+      interest_rate: Number(formData.get('interestRate')),
+      start_date: formData.get('startDate') as string,
+      maturity_date: formData.get('maturityDate') as string,
+      status: 'Active',
     };
 
-    if (editingLoan) {
-        // Add amendment event if editing
-        const amendmentEvent: TimelineEvent = {
-          id: `evt_${Date.now()}`,
-          type: TimelineEventType.AmendmentMade,
+    try {
+      if (editingLoan) {
+        // Update existing loan via API
+        await apiUpdateLoan(editingLoan.id, loanData);
+        // Create amendment timeline event
+        const now = new Date().toISOString().split('T')[0];
+        await apiCreateTimelineEvent({
+          loan_id: editingLoan.id,
+          type: 'Amendment Made',
           date: now,
           title: 'Loan Details Updated',
           description: `Loan facility details were updated by Admin User.`,
-        };
-        newLoan.timelineEvents = [...(newLoan.timelineEvents || []), amendmentEvent];
-        setLoans(loans.map(l => l.id === editingLoan.id ? newLoan : l));
-    } else {
-        setLoans([...loans, newLoan]);
+        });
+      } else {
+        // Create new loan via API (timeline event is created by backend)
+        await apiCreateLoan(loanData);
+      }
+      // Reload loans from API
+      await loadLoans();
+    } catch (error) {
+      console.error('Failed to save loan:', error);
     }
+
     setIsLoanModalOpen(false);
     setEditingLoan(null);
+
+    // // Original local state logic (commented out - using API now)
+    // const now = new Date().toISOString().split('T')[0];
+    // const newLoan: Loan = {
+    //     id: editingLoan ? editingLoan.id : `ln_${Date.now()}`,
+    //     borrower: formData.get('borrower') as string,
+    //     amount: Number(formData.get('amount')),
+    //     currency: formData.get('currency') as string,
+    //     interestRate: Number(formData.get('interestRate')),
+    //     startDate: formData.get('startDate') as string,
+    //     maturityDate: formData.get('maturityDate') as string,
+    //     status: LoanStatus.Active,
+    //     complianceScore: editingLoan ? editingLoan.complianceScore : 100,
+    //     covenants: editingLoan ? editingLoan.covenants : [],
+    //     timelineEvents: editingLoan ? editingLoan.timelineEvents : [
+    //       {
+    //         id: `evt_${Date.now()}`,
+    //         type: TimelineEventType.LoanCreated,
+    //         date: now,
+    //         title: 'Loan Facility Created',
+    //         description: `New loan facility created for ${formData.get('borrower')} with principal amount of ${formData.get('currency')} ${Number(formData.get('amount')).toLocaleString()}.`,
+    //       }
+    //     ],
+    //     uploadedDocuments: editingLoan?.uploadedDocuments || [],
+    //     loanDNA: editingLoan?.loanDNA,
+    //     riskPredictions: editingLoan?.riskPredictions,
+    // };
+    // if (editingLoan) {
+    //     const amendmentEvent: TimelineEvent = {
+    //       id: `evt_${Date.now()}`,
+    //       type: TimelineEventType.AmendmentMade,
+    //       date: now,
+    //       title: 'Loan Details Updated',
+    //       description: `Loan facility details were updated by Admin User.`,
+    //     };
+    //     newLoan.timelineEvents = [...(newLoan.timelineEvents || []), amendmentEvent];
+    //     setLoans(loans.map(l => l.id === editingLoan.id ? newLoan : l));
+    // } else {
+    //     setLoans([...loans, newLoan]);
+    // }
   };
 
-  const handleDeleteLoan = (id: string) => {
-      setLoans(loans.filter(l => l.id !== id));
-      handleNavigate('LOAN_LIST');
+  const handleDeleteLoan = async (id: string) => {
+    try {
+      await apiDeleteLoan(id);
+      // Reload loans from API
+      await loadLoans();
+    } catch (error) {
+      console.error('Failed to delete loan:', error);
+    }
+    handleNavigate('LOAN_LIST');
+
+    // // Original local state logic (commented out - using API now)
+    // setLoans(loans.filter(l => l.id !== id));
+    // handleNavigate('LOAN_LIST');
   };
 
-  const handleSaveCovenant = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveCovenant = async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       if (!targetLoanIdForCovenant) return;
 
       const formData = new FormData(e.currentTarget);
-      const newCovenant: Covenant = {
-          id: `cov_${Date.now()}`,
-          title: formData.get('title') as string,
-          type: formData.get('type') as any,
-          dueDate: formData.get('dueDate') as string,
-          description: formData.get('description') as string,
-          threshold: formData.get('threshold') as string,
-          status: ComplianceStatus.Upcoming,
-          frequency: formData.get('frequency') as string || 'Quarterly',
+      
+      const covenantData = {
+        loan_id: targetLoanIdForCovenant,
+        title: formData.get('title') as string,
+        type: formData.get('type') as string,
+        due_date: formData.get('dueDate') as string,
+        description: formData.get('description') as string,
+        threshold: formData.get('threshold') as string,
+        status: 'Upcoming',
+        frequency: formData.get('frequency') as string || 'Quarterly',
       };
 
-      const now = new Date().toISOString().split('T')[0];
-      const covenantEvent: TimelineEvent = {
-        id: `evt_${Date.now()}`,
-        type: TimelineEventType.CovenantAdded,
-        date: now,
-        title: 'Covenant Added',
-        description: `New ${newCovenant.type} covenant "${newCovenant.title}" added to monitoring. Threshold: ${newCovenant.threshold || 'N/A'}.`,
-        relatedCovenantId: newCovenant.id,
-      };
+      try {
+        const createdCovenant = await apiCreateCovenant(covenantData);
+        // Create timeline event for covenant
+        const now = new Date().toISOString().split('T')[0];
+        await apiCreateTimelineEvent({
+          loan_id: targetLoanIdForCovenant,
+          type: 'Covenant Added',
+          date: now,
+          title: 'Covenant Added',
+          description: `New ${covenantData.type} covenant "${covenantData.title}" added to monitoring. Threshold: ${covenantData.threshold || 'N/A'}.`,
+          related_covenant_id: createdCovenant.id,
+        });
+        // Reload loans from API
+        await loadLoans();
+      } catch (error) {
+        console.error('Failed to save covenant:', error);
+      }
 
-      setLoans(loans.map(l => {
-          if (l.id === targetLoanIdForCovenant) {
-              return { 
-                ...l, 
-                covenants: [...l.covenants, newCovenant],
-                timelineEvents: [...(l.timelineEvents || []), covenantEvent],
-              };
-          }
-          return l;
-      }));
       setIsCovenantModalOpen(false);
+
+      // // Original local state logic (commented out - using API now)
+      // const newCovenant: Covenant = {
+      //     id: `cov_${Date.now()}`,
+      //     title: formData.get('title') as string,
+      //     type: formData.get('type') as any,
+      //     dueDate: formData.get('dueDate') as string,
+      //     description: formData.get('description') as string,
+      //     threshold: formData.get('threshold') as string,
+      //     status: ComplianceStatus.Upcoming,
+      //     frequency: formData.get('frequency') as string || 'Quarterly',
+      // };
+      // const now = new Date().toISOString().split('T')[0];
+      // const covenantEvent: TimelineEvent = {
+      //   id: `evt_${Date.now()}`,
+      //   type: TimelineEventType.CovenantAdded,
+      //   date: now,
+      //   title: 'Covenant Added',
+      //   description: `New ${newCovenant.type} covenant "${newCovenant.title}" added to monitoring. Threshold: ${newCovenant.threshold || 'N/A'}.`,
+      //   relatedCovenantId: newCovenant.id,
+      // };
+      // setLoans(loans.map(l => {
+      //     if (l.id === targetLoanIdForCovenant) {
+      //         return { 
+      //           ...l, 
+      //           covenants: [...l.covenants, newCovenant],
+      //           timelineEvents: [...(l.timelineEvents || []), covenantEvent],
+      //         };
+      //     }
+      //     return l;
+      // }));
   };
 
   const openAddLoan = () => {
@@ -270,7 +446,7 @@ const App: React.FC = () => {
       setIsStatusModalOpen(true);
   };
 
-  const handleUpdateCovenantStatus = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleUpdateCovenantStatus = async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       if (!editingCovenant) return;
 
@@ -279,73 +455,111 @@ const App: React.FC = () => {
       const currentValue = formData.get('currentValue') as string;
       const waiverReason = formData.get('waiverReason') as string;
       const oldStatus = editingCovenant.covenant.status;
-
       const now = new Date().toISOString().split('T')[0];
 
-      setLoans(loans.map(loan => {
-          if (loan.id === editingCovenant.loanId) {
-              const updatedCovenants = loan.covenants.map(cov => {
-                  if (cov.id === editingCovenant.covenant.id) {
-                      const updated: Covenant = {
-                          ...cov,
-                          status: newStatus,
-                          value: currentValue || cov.value,
-                      };
-                      if (newStatus === ComplianceStatus.Waived) {
-                          updated.waiverReason = waiverReason;
-                          updated.waiverDate = now;
-                          updated.waiverApprovedBy = 'Admin User';
-                      } else {
-                          updated.waiverReason = undefined;
-                          updated.waiverDate = undefined;
-                          updated.waiverApprovedBy = undefined;
-                      }
-                      return updated;
-                  }
-                  return cov;
-              });
+      try {
+        // Update covenant via API
+        const covenantUpdate: any = {
+          status: newStatus,
+          value: currentValue || undefined,
+        };
+        
+        if (newStatus === ComplianceStatus.Waived) {
+          covenantUpdate.waiver_reason = waiverReason;
+          covenantUpdate.waiver_date = now;
+          covenantUpdate.waiver_approved_by = 'Admin User';
+        }
 
-              // Create timeline event for status change
-              const timelineEvents = [...(loan.timelineEvents || [])];
-              
-              if (oldStatus !== newStatus) {
-                if (newStatus === ComplianceStatus.Waived) {
-                  timelineEvents.push({
-                    id: `evt_${Date.now()}`,
-                    type: TimelineEventType.WaiverGranted,
-                    date: now,
-                    title: 'Waiver Granted',
-                    description: `Waiver granted for "${editingCovenant.covenant.title}" covenant. Reason: ${waiverReason || 'Not specified'}. Approved by Admin User.`,
-                    relatedCovenantId: editingCovenant.covenant.id,
-                  });
-                } else {
-                  timelineEvents.push({
-                    id: `evt_${Date.now()}`,
-                    type: TimelineEventType.StatusChanged,
-                    date: now,
-                    title: `${editingCovenant.covenant.title} Status Changed`,
-                    description: `Covenant status changed from ${oldStatus} to ${newStatus}. ${currentValue ? `Current value: ${currentValue}.` : ''}`,
-                    relatedCovenantId: editingCovenant.covenant.id,
-                  });
-                }
-              }
+        await apiUpdateCovenant(editingCovenant.covenant.id, covenantUpdate);
 
-              // Recalculate compliance score
-              const totalCovenants = updatedCovenants.length;
-              const compliantCount = updatedCovenants.filter(c => 
-                  c.status === ComplianceStatus.Compliant || 
-                  c.status === ComplianceStatus.Waived ||
-                  c.status === ComplianceStatus.Upcoming
-              ).length;
-              const newScore = totalCovenants > 0 ? Math.round((compliantCount / totalCovenants) * 100) : 100;
-
-              return { ...loan, covenants: updatedCovenants, complianceScore: newScore, timelineEvents };
+        // Create timeline event for status change
+        if (oldStatus !== newStatus) {
+          if (newStatus === ComplianceStatus.Waived) {
+            await apiCreateTimelineEvent({
+              loan_id: editingCovenant.loanId,
+              type: 'Waiver Granted',
+              date: now,
+              title: 'Waiver Granted',
+              description: `Waiver granted for "${editingCovenant.covenant.title}" covenant. Reason: ${waiverReason || 'Not specified'}. Approved by Admin User.`,
+              related_covenant_id: editingCovenant.covenant.id,
+            });
+          } else {
+            await apiCreateTimelineEvent({
+              loan_id: editingCovenant.loanId,
+              type: 'Status Changed',
+              date: now,
+              title: `${editingCovenant.covenant.title} Status Changed`,
+              description: `Covenant status changed from ${oldStatus} to ${newStatus}. ${currentValue ? `Current value: ${currentValue}.` : ''}`,
+              related_covenant_id: editingCovenant.covenant.id,
+            });
           }
-          return loan;
-      }));
+        }
+
+        // Reload loans from API
+        await loadLoans();
+      } catch (error) {
+        console.error('Failed to update covenant status:', error);
+      }
 
       setIsStatusModalOpen(false);
       setEditingCovenant(null);
+
+      // // Original local state logic (commented out - using API now)
+      // setLoans(loans.map(loan => {
+      //     if (loan.id === editingCovenant.loanId) {
+      //         const updatedCovenants = loan.covenants.map(cov => {
+      //             if (cov.id === editingCovenant.covenant.id) {
+      //                 const updated: Covenant = {
+      //                     ...cov,
+      //                     status: newStatus,
+      //                     value: currentValue || cov.value,
+      //                 };
+      //                 if (newStatus === ComplianceStatus.Waived) {
+      //                     updated.waiverReason = waiverReason;
+      //                     updated.waiverDate = now;
+      //                     updated.waiverApprovedBy = 'Admin User';
+      //                 } else {
+      //                     updated.waiverReason = undefined;
+      //                     updated.waiverDate = undefined;
+      //                     updated.waiverApprovedBy = undefined;
+      //                 }
+      //                 return updated;
+      //             }
+      //             return cov;
+      //         });
+      //         const timelineEvents = [...(loan.timelineEvents || [])];
+      //         if (oldStatus !== newStatus) {
+      //           if (newStatus === ComplianceStatus.Waived) {
+      //             timelineEvents.push({
+      //               id: `evt_${Date.now()}`,
+      //               type: TimelineEventType.WaiverGranted,
+      //               date: now,
+      //               title: 'Waiver Granted',
+      //               description: `Waiver granted for "${editingCovenant.covenant.title}" covenant. Reason: ${waiverReason || 'Not specified'}. Approved by Admin User.`,
+      //               relatedCovenantId: editingCovenant.covenant.id,
+      //             });
+      //           } else {
+      //             timelineEvents.push({
+      //               id: `evt_${Date.now()}`,
+      //               type: TimelineEventType.StatusChanged,
+      //               date: now,
+      //               title: `${editingCovenant.covenant.title} Status Changed`,
+      //               description: `Covenant status changed from ${oldStatus} to ${newStatus}. ${currentValue ? `Current value: ${currentValue}.` : ''}`,
+      //               relatedCovenantId: editingCovenant.covenant.id,
+      //             });
+      //           }
+      //         }
+      //         const totalCovenants = updatedCovenants.length;
+      //         const compliantCount = updatedCovenants.filter(c => 
+      //             c.status === ComplianceStatus.Compliant || 
+      //             c.status === ComplianceStatus.Waived ||
+      //             c.status === ComplianceStatus.Upcoming
+      //         ).length;
+      //         const newScore = totalCovenants > 0 ? Math.round((compliantCount / totalCovenants) * 100) : 100;
+      //         return { ...loan, covenants: updatedCovenants, complianceScore: newScore, timelineEvents };
+      //     }
+      //     return loan;
+      // }));
   };
 
   // Document Upload Handlers
@@ -386,70 +600,129 @@ const App: React.FC = () => {
 
     const now = new Date().toISOString().split('T')[0];
 
-    // Generate risk predictions for the loan
-    const loan = loans.find(l => l.id === targetLoanIdForUpload);
-    
-    setLoans(loans.map(l => {
-      if (l.id === targetLoanIdForUpload) {
-        // Create covenants from extracted data
-        const newCovenants: Covenant[] = extractedDNA.extractedCovenants.map((ec, idx) => ({
-          id: `cov_${Date.now()}_${idx}`,
+    try {
+      // Create Loan DNA via API
+      await apiCreateLoanDNA({
+        loan_id: targetLoanIdForUpload,
+        extracted_at: now,
+        source_document: uploadingFile?.name || 'document.pdf',
+        confidence: extractedDNA.confidence,
+        summary: extractedDNA.summary,
+        key_terms: extractedDNA.keyTerms,
+        extracted_covenants_data: extractedDNA.extractedCovenants,
+        risk_factors: extractedDNA.riskFactors,
+      });
+
+      // Create covenants from extracted data via API
+      for (const ec of extractedDNA.extractedCovenants) {
+        await apiCreateCovenant({
+          loan_id: targetLoanIdForUpload,
           title: ec.title,
           type: ec.type,
-          threshold: ec.threshold,
+          due_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           description: ec.description,
+          threshold: ec.threshold,
+          status: 'Upcoming',
           frequency: ec.frequency,
-          dueDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 90 days from now
-          status: ComplianceStatus.Upcoming,
-        }));
-
-        // Create timeline events
-        const uploadEvent: TimelineEvent = {
-          id: `evt_${Date.now()}_1`,
-          type: TimelineEventType.DocumentUploaded,
-          date: now,
-          title: 'Document Uploaded & Processed',
-          description: `"${uploadingFile?.name}" uploaded and processed by AI. Extracted ${extractedDNA.extractedCovenants.length} covenants with ${extractedDNA.confidence}% confidence.`,
-        };
-
-        const covenantEvent: TimelineEvent = {
-          id: `evt_${Date.now()}_2`,
-          type: TimelineEventType.CovenantAdded,
-          date: now,
-          title: 'Covenants Auto-Configured',
-          description: `${newCovenants.length} covenants automatically extracted and added to monitoring: ${newCovenants.map(c => c.title).join(', ')}.`,
-        };
-
-        return {
-          ...l,
-          loanDNA: extractedDNA,
-          covenants: [...l.covenants, ...newCovenants],
-          uploadedDocuments: [...(l.uploadedDocuments || []), uploadingFile?.name || ''],
-          timelineEvents: [...(l.timelineEvents || []), uploadEvent, covenantEvent],
-        };
+        });
       }
-      return l;
-    }));
 
-    // Generate risk predictions after a short delay
-    setTimeout(async () => {
-      const updatedLoan = loans.find(l => l.id === targetLoanIdForUpload);
-      if (updatedLoan) {
-        const predictions = await generateRiskPredictions(updatedLoan);
-        setLoans(prev => prev.map(l => 
-          l.id === targetLoanIdForUpload ? { ...l, riskPredictions: predictions } : l
-        ));
-      }
-    }, 500);
+      // Create timeline events via API
+      await apiCreateTimelineEvent({
+        loan_id: targetLoanIdForUpload,
+        type: 'Document Uploaded',
+        date: now,
+        title: 'Document Uploaded & Processed',
+        description: `"${uploadingFile?.name}" uploaded and processed by AI. Extracted ${extractedDNA.extractedCovenants.length} covenants with ${extractedDNA.confidence}% confidence.`,
+      });
+
+      await apiCreateTimelineEvent({
+        loan_id: targetLoanIdForUpload,
+        type: 'Covenant Added',
+        date: now,
+        title: 'Covenants Auto-Configured',
+        description: `${extractedDNA.extractedCovenants.length} covenants automatically extracted and added to monitoring: ${extractedDNA.extractedCovenants.map(c => c.title).join(', ')}.`,
+      });
+
+      // Reload loans from API
+      await loadLoans();
+    } catch (error) {
+      console.error('Failed to apply extracted data:', error);
+    }
 
     setIsUploadModalOpen(false);
     setUploadingFile(null);
     setExtractedDNA(null);
     setUploadProgress('idle');
+
+    // // Original local state logic (commented out - using API now)
+    // const loan = loans.find(l => l.id === targetLoanIdForUpload);
+    // setLoans(loans.map(l => {
+    //   if (l.id === targetLoanIdForUpload) {
+    //     const newCovenants: Covenant[] = extractedDNA.extractedCovenants.map((ec, idx) => ({
+    //       id: `cov_${Date.now()}_${idx}`,
+    //       title: ec.title,
+    //       type: ec.type,
+    //       threshold: ec.threshold,
+    //       description: ec.description,
+    //       frequency: ec.frequency,
+    //       dueDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    //       status: ComplianceStatus.Upcoming,
+    //     }));
+    //     const uploadEvent: TimelineEvent = {
+    //       id: `evt_${Date.now()}_1`,
+    //       type: TimelineEventType.DocumentUploaded,
+    //       date: now,
+    //       title: 'Document Uploaded & Processed',
+    //       description: `"${uploadingFile?.name}" uploaded and processed by AI.`,
+    //     };
+    //     const covenantEvent: TimelineEvent = {
+    //       id: `evt_${Date.now()}_2`,
+    //       type: TimelineEventType.CovenantAdded,
+    //       date: now,
+    //       title: 'Covenants Auto-Configured',
+    //       description: `${newCovenants.length} covenants automatically extracted.`,
+    //     };
+    //     return {
+    //       ...l,
+    //       loanDNA: extractedDNA,
+    //       covenants: [...l.covenants, ...newCovenants],
+    //       uploadedDocuments: [...(l.uploadedDocuments || []), uploadingFile?.name || ''],
+    //       timelineEvents: [...(l.timelineEvents || []), uploadEvent, covenantEvent],
+    //     };
+    //   }
+    //   return l;
+    // }));
+    // setTimeout(async () => {
+    //   const updatedLoan = loans.find(l => l.id === targetLoanIdForUpload);
+    //   if (updatedLoan) {
+    //     const predictions = await generateRiskPredictions(updatedLoan);
+    //     setLoans(prev => prev.map(l => 
+    //       l.id === targetLoanIdForUpload ? { ...l, riskPredictions: predictions } : l
+    //     ));
+    //   }
+    // }, 500);
   };
 
-  const handleUpdateLoan = (updatedLoan: Loan) => {
-    setLoans(loans.map(l => l.id === updatedLoan.id ? updatedLoan : l));
+  const handleUpdateLoan = async (updatedLoan: Loan) => {
+    try {
+      await apiUpdateLoan(updatedLoan.id, {
+        borrower: updatedLoan.borrower,
+        amount: updatedLoan.amount,
+        currency: updatedLoan.currency,
+        interest_rate: updatedLoan.interestRate,
+        start_date: updatedLoan.startDate,
+        maturity_date: updatedLoan.maturityDate,
+        status: updatedLoan.status,
+      });
+      await loadLoans();
+    } catch (error) {
+      console.error('Failed to update loan:', error);
+      // Fallback to local state update
+      setLoans(loans.map(l => l.id === updatedLoan.id ? updatedLoan : l));
+    }
+    // // Original local state logic (commented out - using API now)
+    // setLoans(loans.map(l => l.id === updatedLoan.id ? updatedLoan : l));
   };
 
   return (

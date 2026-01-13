@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { User, Mail, ArrowRight } from 'lucide-react';
 import { Input } from '../components/ui/Input';
+import { login, register } from '../services/apiService';
 
 interface AuthViewProps {
   onLogin: () => void;
@@ -10,15 +11,52 @@ interface AuthViewProps {
 const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-        setLoading(false);
+    setError(null);
+
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+
+    try {
+      if (isLogin) {
+        // Login - use email as username for simplicity
+        await login({ username: email, password });
         onLogin();
-    }, 1500);
+      } else {
+        // Register
+        const fullName = formData.get('fullName') as string;
+        const [firstName, ...lastNameParts] = fullName.split(' ');
+        const lastName = lastNameParts.join(' ');
+
+        await register({
+          username: email.split('@')[0], // Use email prefix as username
+          email,
+          password,
+          password_confirm: password,
+          first_name: firstName,
+          last_name: lastName,
+        });
+
+        // After successful registration, login automatically
+        await login({ username: email.split('@')[0], password });
+        onLogin();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+
+    // // Simulate API call (commented out - using real API now)
+    // setTimeout(() => {
+    //     setLoading(false);
+    //     onLogin();
+    // }, 1500);
   };
 
   return (
@@ -43,12 +81,17 @@ const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
         </div>
 
         <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 md:p-8 shadow-2xl">
+            {error && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit}>
                 {!isLogin && (
-                    <Input label="Full Name" placeholder="John Doe" type="text" required />
+                    <Input label="Full Name" name="fullName" placeholder="John Doe" type="text" required />
                 )}
-                <Input label="Email Address" placeholder="name@company.com" type="email" required />
-                <Input label="Password" placeholder="••••••••" type="password" required />
+                <Input label="Email Address" name="email" placeholder="name@company.com" type="email" required />
+                <Input label="Password" name="password" placeholder="••••••••" type="password" required />
                 
                 <button 
                     type="submit"

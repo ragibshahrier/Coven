@@ -298,7 +298,7 @@ class UploadedDocumentSerializer(serializers.ModelSerializer):
 # ============================================
 
 class LoanListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for loan list views."""
+    """Full serializer for loan list views - includes all nested data for frontend."""
     interestRate = serializers.DecimalField(
         source='interest_rate', 
         max_digits=5, 
@@ -307,18 +307,36 @@ class LoanListSerializer(serializers.ModelSerializer):
     startDate = serializers.DateField(source='start_date')
     maturityDate = serializers.DateField(source='maturity_date')
     complianceScore = serializers.IntegerField(source='compliance_score')
-    covenants_count = serializers.SerializerMethodField()
+    riskSummary = serializers.CharField(
+        source='risk_summary', 
+        allow_null=True, 
+        required=False
+    )
+    covenants = CovenantSerializer(many=True, read_only=True)
+    timelineEvents = TimelineEventSerializer(
+        source='timeline_events', 
+        many=True, 
+        read_only=True
+    )
+    loanDNA = LoanDNASerializer(source='loan_dna', read_only=True)
+    riskPredictions = RiskPredictionSerializer(
+        source='risk_predictions', 
+        many=True, 
+        read_only=True
+    )
+    uploadedDocuments = serializers.SerializerMethodField()
     
     class Meta:
         model = Loan
         fields = [
             'id', 'borrower', 'amount', 'currency', 'interestRate',
             'startDate', 'maturityDate', 'status', 'complianceScore',
-            'covenants_count'
+            'covenants', 'riskSummary', 'timelineEvents', 'loanDNA',
+            'riskPredictions', 'uploadedDocuments'
         ]
     
-    def get_covenants_count(self, obj):
-        return obj.covenants.count()
+    def get_uploadedDocuments(self, obj):
+        return list(obj.uploaded_documents.values_list('filename', flat=True))
 
 
 class LoanDetailSerializer(serializers.ModelSerializer):
