@@ -12,19 +12,24 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+load_dotenv(BASE_DIR / 'backend' / '.env')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-__xipp-^_yy0sudv6=mx-yqm!s)e7kc#wbn(mshy8nuws*)-*4'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = ['*']
 
@@ -147,15 +152,11 @@ SIMPLE_JWT = {
 }
 
 
-# CORS Configuration
-CORS_ALLOW_ALL_ORIGINS = True  # For development only
+# CORS Configuration - Allow everything for hackathon
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
-
-# For production, use:
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173",
-#     "http://127.0.0.1:5173",
-# ]
+CORS_ALLOW_METHODS = ['*']
+CORS_ALLOW_HEADERS = ['*']
 
 
 # Internationalization
@@ -183,3 +184,17 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ============================================
+# AI & OCR SERVICE CONFIGURATION
+# ============================================
+
+# Groq AI API Key (for LangChain integration)
+
+# OCR.space API Key (get free key at https://ocr.space/ocrapi)
+
+
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
+
+# OCR.space API Key (get free key at https://ocr.space/ocrapi)
+OCRSPACE_API_KEY = os.getenv('OCRSPACE_API_KEY', '')

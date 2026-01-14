@@ -9,6 +9,11 @@ from .views import (
     LoanDocumentsView, DashboardStatsView
 )
 
+from .views_ai import (
+    AILoanSummaryView, AICovenantExplanationView, AIRiskPredictionsView,
+    AIWhatChangedView, AIExtractLoanDNAView, RecalculateComplianceScoreView
+)
+
 # Create router for viewsets
 router = DefaultRouter()
 router.register(r'loans', LoanViewSet, basename='loan')
@@ -33,6 +38,14 @@ urlpatterns = [
     # Document upload
     path('documents/upload/', DocumentUploadView.as_view(), name='document_upload'),
     path('loans/<str:loan_id>/documents/', LoanDocumentsView.as_view(), name='loan_documents'),
+    
+    # AI-powered endpoints
+    path('ai/loan-summary/', AILoanSummaryView.as_view(), name='ai_loan_summary'),
+    path('ai/covenant-explanation/', AICovenantExplanationView.as_view(), name='ai_covenant_explanation'),
+    path('ai/risk-predictions/', AIRiskPredictionsView.as_view(), name='ai_risk_predictions'),
+    path('ai/what-changed/', AIWhatChangedView.as_view(), name='ai_what_changed'),
+    path('ai/extract-loan-dna/', AIExtractLoanDNAView.as_view(), name='ai_extract_loan_dna'),
+    path('ai/recalculate-score/', RecalculateComplianceScoreView.as_view(), name='ai_recalculate_score'),
     
     # Router URLs (loans, covenants, timeline-events, risk-predictions, loan-dna)
     path('', include(router.urls)),

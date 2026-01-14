@@ -335,21 +335,31 @@ class CovenantViewSet(viewsets.ModelViewSet):
         return Response(CovenantSerializer(covenant).data)
     
     def _recalculate_compliance_score(self, loan):
-        """Recalculate the compliance score for a loan."""
+        """
+        Recalculate the compliance score for a loan based on covenant statuses.
+        
+        Score Calculation:
+        - Compliant/Waived/Upcoming covenants: full points
+        - At Risk covenants: half points
+        - Breached covenants: no points
+        """
         covenants = loan.covenants.all()
         total = covenants.count()
         
         if total == 0:
             loan.compliance_score = 100
         else:
-            compliant = covenants.filter(
-                status__in=[
-                    Covenant.ComplianceStatus.COMPLIANT,
-                    Covenant.ComplianceStatus.WAIVED,
-                    Covenant.ComplianceStatus.UPCOMING
-                ]
-            ).count()
-            loan.compliance_score = round((compliant / total) * 100)
+            score = 0
+            for covenant in covenants:
+                if covenant.status in [Covenant.ComplianceStatus.COMPLIANT, 
+                                       Covenant.ComplianceStatus.WAIVED,
+                                       Covenant.ComplianceStatus.UPCOMING]:
+                    score += 100
+                elif covenant.status == Covenant.ComplianceStatus.AT_RISK:
+                    score += 50  # At risk gets half points
+                # Breached gets 0 points
+            
+            loan.compliance_score = round(score / total)
         
         loan.save()
 

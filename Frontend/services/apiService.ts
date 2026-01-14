@@ -421,6 +421,150 @@ export const createLoanDNA = async (dnaData: LoanDNAData) => {
   return response.json();
 };
 
+// ============================================
+// AI-POWERED ENDPOINTS
+// ============================================
+
+export interface AILoanSummaryResponse {
+  summary: string;
+  loan_id: string;
+}
+
+export interface AICovenantExplanationResponse {
+  explanation: string;
+  covenant_id: string;
+  status: string;
+}
+
+export interface AIRiskPrediction {
+  covenantId: string;
+  covenantTitle: string;
+  currentValue: string;
+  threshold: string;
+  probability: number;
+  trend: 'improving' | 'stable' | 'deteriorating';
+  predictedBreachDate: string;
+  explanation: string;
+}
+
+export interface AIRiskPredictionsResponse {
+  predictions: AIRiskPrediction[];
+  loan_id: string;
+}
+
+export interface AIWhatChangedResponse {
+  explanation: string;
+  loan_id: string;
+  events_analyzed: number;
+}
+
+export interface AILoanDNAResponse {
+  loanDNA: {
+    extractedAt: string;
+    sourceDocument: string;
+    confidence: number;
+    keyTerms: {
+      facilityType: string;
+      purpose: string;
+      securityType: string;
+      governingLaw: string;
+    };
+    extractedCovenants: Array<{
+      title: string;
+      type: 'Financial' | 'Reporting' | 'Affirmative' | 'Negative';
+      threshold: string;
+      frequency: string;
+      description: string;
+    }>;
+    riskFactors: string[];
+    summary: string;
+  };
+  loan_id: string;
+}
+
+export const getAILoanSummary = async (loanId: string): Promise<AILoanSummaryResponse> => {
+  const response = await fetchWithAuth('/ai/loan-summary/', {
+    method: 'POST',
+    body: JSON.stringify({ loan_id: loanId }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to generate loan summary');
+  }
+  return response.json();
+};
+
+export const getAICovenantExplanation = async (covenantId: string): Promise<AICovenantExplanationResponse> => {
+  const response = await fetchWithAuth('/ai/covenant-explanation/', {
+    method: 'POST',
+    body: JSON.stringify({ covenant_id: covenantId }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to generate covenant explanation');
+  }
+  return response.json();
+};
+
+export const getAIRiskPredictions = async (loanId: string): Promise<AIRiskPredictionsResponse> => {
+  const response = await fetchWithAuth('/ai/risk-predictions/', {
+    method: 'POST',
+    body: JSON.stringify({ loan_id: loanId }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to generate risk predictions');
+  }
+  return response.json();
+};
+
+export const getAIWhatChanged = async (loanId: string): Promise<AIWhatChangedResponse> => {
+  const response = await fetchWithAuth('/ai/what-changed/', {
+    method: 'POST',
+    body: JSON.stringify({ loan_id: loanId }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to generate what-changed explanation');
+  }
+  return response.json();
+};
+
+export const extractAILoanDNA = async (loanId: string, file?: File, documentText?: string): Promise<AILoanDNAResponse> => {
+  if (file) {
+    const formData = new FormData();
+    formData.append('loan_id', loanId);
+    formData.append('file', file);
+
+    const headers: HeadersInit = {};
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/ai/extract-loan-dna/`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to extract loan DNA');
+    }
+    return response.json();
+  } else {
+    const response = await fetchWithAuth('/ai/extract-loan-dna/', {
+      method: 'POST',
+      body: JSON.stringify({ loan_id: loanId, document_text: documentText }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to extract loan DNA');
+    }
+    return response.json();
+  }
+};
+
 // Export everything as a namespace
 const apiService = {
   // Auth
@@ -459,6 +603,13 @@ const apiService = {
   
   // Loan DNA
   createLoanDNA,
+  
+  // AI endpoints
+  getAILoanSummary,
+  getAICovenantExplanation,
+  getAIRiskPredictions,
+  getAIWhatChanged,
+  extractAILoanDNA,
 };
 
 export default apiService;

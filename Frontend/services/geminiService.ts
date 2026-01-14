@@ -1,107 +1,94 @@
-import { GoogleGenAI } from "@google/genai";
 import { Loan, Covenant, LoanDNA, RiskPrediction, TimelineEvent, TimelineEventType, ComplianceStatus } from "../types";
-
-// Initialize the API client safely. 
-const apiKey = process.env.API_KEY || '';
-let ai: GoogleGenAI | null = null;
-
-if (apiKey) {
-  ai = new GoogleGenAI({ apiKey });
-}
+import { 
+  getAILoanSummary, 
+  getAICovenantExplanation, 
+  getAIRiskPredictions, 
+  getAIWhatChanged,
+  extractAILoanDNA,
+  isAuthenticated
+} from "./apiService";
 
 // ============================================
 // LOAN SUMMARY & ANALYSIS
 // ============================================
 
 export const generateLoanSummary = async (loan: Loan): Promise<string> => {
-  if (!ai) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const riskLevel = loan.complianceScore > 90 ? 'low' : loan.complianceScore > 75 ? 'moderate' : 'elevated';
-        const atRiskCount = loan.covenants.filter(c => c.status === ComplianceStatus.AtRisk || c.status === ComplianceStatus.Breached).length;
-        
-        resolve(`Based on comprehensive analysis of the ${loan.borrower} credit facility, the ${(loan.amount / 1000000).toFixed(1)}M ${loan.currency} loan is currently in ${loan.status} standing with a ${riskLevel} risk profile. ${atRiskCount > 0 ? `There are ${atRiskCount} covenant(s) requiring immediate attention.` : 'All covenants are currently in compliance.'} The facility matures on ${new Date(loan.maturityDate).toLocaleDateString()}, with ${loan.covenants.length} active covenants under monitoring. ${loan.riskPredictions && loan.riskPredictions.length > 0 ? `Predictive analysis indicates potential concerns with ${loan.riskPredictions.filter(r => r.probability > 50).length} covenant(s) showing elevated breach probability.` : ''}`);
-      }, 1500);
-    });
+  // Try to use backend AI if authenticated
+  if (isAuthenticated()) {
+    try {
+      const response = await getAILoanSummary(loan.id);
+      return response.summary;
+    } catch (error) {
+      console.error("Backend AI Error:", error);
+      // Fall through to fallback
+    }
   }
-
-  try {
-    const prompt = `Act as a senior credit risk analyst. Analyze the following loan data and provide a concise, professional executive summary (max 4 sentences). Highlight any risks if compliance score is below 90.
+  
+  // Fallback to local generation
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const riskLevel = loan.complianceScore > 90 ? 'low' : loan.complianceScore > 75 ? 'moderate' : 'elevated';
+      const atRiskCount = loan.covenants.filter(c => c.status === ComplianceStatus.AtRisk || c.status === ComplianceStatus.Breached).length;
       
-      Loan Data:
-      Borrower: ${loan.borrower}
-      Amount: ${loan.amount} ${loan.currency}
-      Status: ${loan.status}
-      Compliance Score: ${loan.complianceScore}
-      Number of Covenants: ${loan.covenants.length}
-      Active Covenants: ${JSON.stringify(loan.covenants.map(c => ({ title: c.title, status: c.status, val: c.value, limit: c.threshold })))}`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-    });
-    
-    return response.text || "Summary unavailable.";
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "AI analysis currently unavailable due to network or configuration issues.";
-  }
+      resolve(`Based on comprehensive analysis of the ${loan.borrower} credit facility, the ${(loan.amount / 1000000).toFixed(1)}M ${loan.currency} loan is currently in ${loan.status} standing with a ${riskLevel} risk profile. ${atRiskCount > 0 ? `There are ${atRiskCount} covenant(s) requiring immediate attention.` : 'All covenants are currently in compliance.'} The facility matures on ${new Date(loan.maturityDate).toLocaleDateString()}, with ${loan.covenants.length} active covenants under monitoring. ${loan.riskPredictions && loan.riskPredictions.length > 0 ? `Predictive analysis indicates potential concerns with ${loan.riskPredictions.filter(r => r.probability > 50).length} covenant(s) showing elevated breach probability.` : ''}`);
+    }, 500);
+  });
 };
 
 export const explainCovenantRisk = async (covenant: Covenant, loan: Loan): Promise<string> => {
-  if (!ai) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const statusExplanations: Record<string, string> = {
-          [ComplianceStatus.Compliant]: `The ${covenant.title} covenant is currently in full compliance. ${covenant.value ? `The current value of ${covenant.value} is within the acceptable threshold of ${covenant.threshold}.` : ''} This indicates healthy financial discipline by ${loan.borrower}. Continue regular monitoring as scheduled.`,
-          [ComplianceStatus.AtRisk]: `⚠️ ATTENTION REQUIRED: The ${covenant.title} covenant is approaching breach territory. ${covenant.value ? `Current value of ${covenant.value} is dangerously close to the ${covenant.threshold} threshold.` : ''} This typically indicates deteriorating financial performance. Recommend immediate engagement with borrower to understand underlying drivers and discuss potential remediation strategies.`,
-          [ComplianceStatus.Breached]: `🚨 BREACH CONFIRMED: The ${covenant.title} covenant has been breached. ${covenant.value ? `Current value of ${covenant.value} exceeds the ${covenant.threshold} threshold.` : ''} This triggers default provisions under the credit agreement. Immediate actions required: (1) Issue formal breach notification, (2) Assess cross-default implications, (3) Evaluate waiver or amendment options, (4) Review collateral position.`,
-          [ComplianceStatus.Upcoming]: `The ${covenant.title} covenant test is upcoming on ${covenant.dueDate}. ${covenant.threshold ? `The borrower must demonstrate compliance with the ${covenant.threshold} threshold.` : ''} Based on historical trends and current financial position, preliminary assessment suggests ${loan.complianceScore > 85 ? 'likely compliance' : 'potential challenges'}. Recommend proactive outreach to ensure timely submission.`,
-          [ComplianceStatus.Waived]: `The ${covenant.title} covenant has been waived. ${covenant.waiverReason ? `Waiver reason: ${covenant.waiverReason}.` : ''} ${covenant.waiverDate ? `Waiver was granted on ${covenant.waiverDate}` : ''} ${covenant.waiverApprovedBy ? `by ${covenant.waiverApprovedBy}` : ''}. Monitor for covenant reinstatement terms and ensure borrower meets any conditions attached to the waiver.`,
-        };
-        
-        resolve(statusExplanations[covenant.status] || `The ${covenant.title} is a ${covenant.type.toLowerCase()} covenant that measures the borrower's ${covenant.type === 'Financial' ? 'financial health' : 'compliance with reporting obligations'}. Current status: ${covenant.status}.`);
-      }, 1200);
-    });
+  // Try to use backend AI if authenticated
+  if (isAuthenticated()) {
+    try {
+      const response = await getAICovenantExplanation(covenant.id);
+      return response.explanation;
+    } catch (error) {
+      console.error("Backend AI Error:", error);
+      // Fall through to fallback
+    }
   }
-
-  try {
-    const prompt = `Explain the significance of the following financial covenant in the context of a corporate loan. Explain why a status of "${covenant.status}" is significant here. Keep it professional, concise, and educational.
+  
+  // Fallback to local generation
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const statusExplanations: Record<string, string> = {
+        [ComplianceStatus.Compliant]: `The ${covenant.title} covenant is currently in full compliance. ${covenant.value ? `The current value of ${covenant.value} is within the acceptable threshold of ${covenant.threshold}.` : ''} This indicates healthy financial discipline by ${loan.borrower}. Continue regular monitoring as scheduled.`,
+        [ComplianceStatus.AtRisk]: `⚠️ ATTENTION REQUIRED: The ${covenant.title} covenant is approaching breach territory. ${covenant.value ? `Current value of ${covenant.value} is dangerously close to the ${covenant.threshold} threshold.` : ''} This typically indicates deteriorating financial performance. Recommend immediate engagement with borrower to understand underlying drivers and discuss potential remediation strategies.`,
+        [ComplianceStatus.Breached]: `🚨 BREACH CONFIRMED: The ${covenant.title} covenant has been breached. ${covenant.value ? `Current value of ${covenant.value} exceeds the ${covenant.threshold} threshold.` : ''} This triggers default provisions under the credit agreement. Immediate actions required: (1) Issue formal breach notification, (2) Assess cross-default implications, (3) Evaluate waiver or amendment options, (4) Review collateral position.`,
+        [ComplianceStatus.Upcoming]: `The ${covenant.title} covenant test is upcoming on ${covenant.dueDate}. ${covenant.threshold ? `The borrower must demonstrate compliance with the ${covenant.threshold} threshold.` : ''} Based on historical trends and current financial position, preliminary assessment suggests ${loan.complianceScore > 85 ? 'likely compliance' : 'potential challenges'}. Recommend proactive outreach to ensure timely submission.`,
+        [ComplianceStatus.Waived]: `The ${covenant.title} covenant has been waived. ${covenant.waiverReason ? `Waiver reason: ${covenant.waiverReason}.` : ''} ${covenant.waiverDate ? `Waiver was granted on ${covenant.waiverDate}` : ''} ${covenant.waiverApprovedBy ? `by ${covenant.waiverApprovedBy}` : ''}. Monitor for covenant reinstatement terms and ensure borrower meets any conditions attached to the waiver.`,
+      };
       
-      Covenant: ${covenant.title}
-      Description: ${covenant.description}
-      Current Value: ${covenant.value || 'N/A'}
-      Threshold: ${covenant.threshold || 'N/A'}
-      Status: ${covenant.status}`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-    });
-
-    return response.text || "Explanation unavailable.";
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "AI explanation unavailable.";
-  }
+      resolve(statusExplanations[covenant.status] || `The ${covenant.title} is a ${covenant.type.toLowerCase()} covenant that measures the borrower's ${covenant.type === 'Financial' ? 'financial health' : 'compliance with reporting obligations'}. Current status: ${covenant.status}.`);
+    }, 500);
+  });
 };
 
 // ============================================
 // DOCUMENT UPLOAD & LOAN DNA EXTRACTION
 // ============================================
 
-export const extractLoanDNA = async (fileName: string, fileContent?: string): Promise<LoanDNA> => {
-  // Simulate AI processing delay
+export const extractLoanDNA = async (fileName: string, fileContent?: string, loanId?: string, file?: File): Promise<LoanDNA> => {
+  // Try to use backend AI if authenticated and loanId provided
+  if (isAuthenticated() && loanId) {
+    try {
+      const response = await extractAILoanDNA(loanId, file, fileContent);
+      return response.loanDNA;
+    } catch (error) {
+      console.error("Backend AI Error:", error);
+      // Fall through to fallback
+    }
+  }
+  
+  // Fallback to local mock extraction
   return new Promise((resolve) => {
     setTimeout(() => {
-      // Mock extraction based on filename patterns
       const isEnergy = fileName.toLowerCase().includes('energy') || fileName.toLowerCase().includes('solar');
       const isRetail = fileName.toLowerCase().includes('retail') || fileName.toLowerCase().includes('consumer');
       
       const mockDNA: LoanDNA = {
         extractedAt: new Date().toISOString().split('T')[0],
         sourceDocument: fileName,
-        confidence: Math.floor(Math.random() * 15) + 85, // 85-99%
+        confidence: Math.floor(Math.random() * 15) + 85,
         keyTerms: {
           facilityType: isEnergy ? 'Project Finance Facility' : isRetail ? 'Asset-Based Lending' : 'Term Loan B',
           purpose: isEnergy ? 'Renewable Energy Project Development' : isRetail ? 'Inventory & Working Capital' : 'General Corporate Purposes',
@@ -156,7 +143,7 @@ export const extractLoanDNA = async (fileName: string, fileContent?: string): Pr
       };
       
       resolve(mockDNA);
-    }, 2500); // Simulate processing time
+    }, 1000);
   });
 };
 
@@ -165,6 +152,18 @@ export const extractLoanDNA = async (fileName: string, fileContent?: string): Pr
 // ============================================
 
 export const generateRiskPredictions = async (loan: Loan): Promise<RiskPrediction[]> => {
+  // Try to use backend AI if authenticated
+  if (isAuthenticated()) {
+    try {
+      const response = await getAIRiskPredictions(loan.id);
+      return response.predictions;
+    } catch (error) {
+      console.error("Backend AI Error:", error);
+      // Fall through to fallback
+    }
+  }
+  
+  // Fallback to local generation
   return new Promise((resolve) => {
     setTimeout(() => {
       const predictions: RiskPrediction[] = [];
@@ -182,7 +181,7 @@ export const generateRiskPredictions = async (loan: Loan): Promise<RiskPredictio
             predictedBreachDate = 'Already breached';
             explanation = `This covenant is currently in breach. Immediate remediation required. Consider waiver request or amendment negotiation.`;
           } else if (covenant.status === ComplianceStatus.AtRisk) {
-            probability = Math.floor(Math.random() * 30) + 60; // 60-90%
+            probability = Math.floor(Math.random() * 30) + 60;
             trend = 'deteriorating';
             const monthsToBreak = Math.floor(Math.random() * 4) + 1;
             const breachDate = new Date();
@@ -190,11 +189,11 @@ export const generateRiskPredictions = async (loan: Loan): Promise<RiskPredictio
             predictedBreachDate = breachDate.toISOString().split('T')[0];
             explanation = `Based on current trajectory and historical patterns, there is a ${probability}% probability of breach within ${monthsToBreak} months. Key drivers: declining EBITDA trend, stable debt levels. Recommend proactive borrower engagement.`;
           } else if (covenant.status === ComplianceStatus.Compliant) {
-            probability = Math.floor(Math.random() * 25); // 0-25%
+            probability = Math.floor(Math.random() * 25);
             trend = Math.random() > 0.7 ? 'improving' : 'stable';
             explanation = `Covenant currently in compliance with healthy buffer. ${trend === 'improving' ? 'Positive trend observed in underlying metrics.' : 'Stable performance expected to continue.'} Low breach probability under base case scenario.`;
           } else {
-            probability = Math.floor(Math.random() * 40) + 10; // 10-50%
+            probability = Math.floor(Math.random() * 40) + 10;
             trend = 'stable';
             explanation = `Upcoming covenant test. Based on preliminary data, compliance is ${probability < 30 ? 'likely' : 'uncertain'}. Continue monitoring leading indicators.`;
           }
@@ -213,7 +212,7 @@ export const generateRiskPredictions = async (loan: Loan): Promise<RiskPredictio
       });
       
       resolve(predictions);
-    }, 1500);
+    }, 500);
   });
 };
 
@@ -222,6 +221,18 @@ export const generateRiskPredictions = async (loan: Loan): Promise<RiskPredictio
 // ============================================
 
 export const generateWhatChangedExplanation = async (loan: Loan, recentEvents: TimelineEvent[]): Promise<string> => {
+  // Try to use backend AI if authenticated
+  if (isAuthenticated()) {
+    try {
+      const response = await getAIWhatChanged(loan.id);
+      return response.explanation;
+    } catch (error) {
+      console.error("Backend AI Error:", error);
+      // Fall through to fallback
+    }
+  }
+  
+  // Fallback to local generation
   return new Promise((resolve) => {
     setTimeout(() => {
       if (recentEvents.length === 0) {
@@ -251,7 +262,7 @@ export const generateWhatChangedExplanation = async (loan: Loan, recentEvents: T
       const explanation = `**Recent Activity Summary for ${loan.borrower}**\n\n${eventSummaries.join('\n\n')}\n\n**Overall Assessment:** The loan's risk profile is ${riskTrend}. ${loan.complianceScore < 85 ? 'Recommend increased monitoring frequency and proactive borrower engagement.' : 'Continue standard monitoring procedures.'}`;
       
       resolve(explanation);
-    }, 1000);
+    }, 500);
   });
 };
 
