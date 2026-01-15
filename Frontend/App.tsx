@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ViewState, Loan, Covenant, LoanStatus, ComplianceStatus, TimelineEventType, TimelineEvent, LoanDNA } from './types';
 import LandingView from './views/LandingView';
 import DashboardView from './views/DashboardView';
@@ -7,6 +7,7 @@ import LoanDetailView from './views/LoanDetailView';
 import ReportsView from './views/ReportsView';
 import SettingsView from './views/SettingsView';
 import AuthView from './views/AuthView';
+import BackendWakeUp from './components/BackendWakeUp';
 import { LayoutDashboard, List, FileText, Settings, Menu, X, Upload, Sparkles, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 // import { MOCK_LOANS } from './constants'; // Commented out - using API data now
@@ -29,6 +30,7 @@ import apiService, {
   createRiskPrediction as apiCreateRiskPrediction,
   updateProfile as apiUpdateProfile,
   setStoredUser,
+  checkBackendHealth,
 } from './services/apiService';
 import { UserProfile } from './views/SettingsView';
 
@@ -127,6 +129,7 @@ const MobileHeader = ({ onMenuClick, title }: { onMenuClick: () => void; title: 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('LANDING');
   const [isAuthenticated, setIsAuthenticated] = useState(checkAuth());
+  const [backendReady, setBackendReady] = useState(false);
   // const [loans, setLoans] = useState<Loan[]>(MOCK_LOANS); // Commented out - using API data now
   const [loans, setLoans] = useState<Loan[]>([]);
   const [selectedLoanId, setSelectedLoanId] = useState<string | undefined>(undefined);
@@ -785,10 +788,18 @@ const App: React.FC = () => {
     // setLoans(loans.map(l => l.id === updatedLoan.id ? updatedLoan : l));
   };
 
+  // Memoized health check function for BackendWakeUp
+  const handleHealthCheck = useCallback(() => checkBackendHealth(), []);
+
   return (
     <div className="bg-slate-950 min-h-screen text-slate-200 font-sans selection:bg-emerald-500/30">
       {view === 'LANDING' ? (
         <LandingView onEnter={() => setView('AUTH')} />
+      ) : !backendReady ? (
+        <BackendWakeUp 
+          onReady={() => setBackendReady(true)} 
+          checkHealth={handleHealthCheck}
+        />
       ) : !isAuthenticated ? (
          <AuthView onLogin={handleLogin} />
       ) : (

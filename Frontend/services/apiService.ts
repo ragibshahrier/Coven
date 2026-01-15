@@ -40,6 +40,30 @@ export const isAuthenticated = () => {
   return !!accessToken;
 };
 
+// Health check for backend wake-up (Render free tier spins down)
+export const checkBackendHealth = async (): Promise<boolean> => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    
+    const response = await fetch(`${API_BASE_URL}/health/`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.status === 'healthy';
+    }
+    return false;
+  } catch (error) {
+    console.log('Backend not ready yet:', error);
+    return false;
+  }
+};
+
 // Generic fetch wrapper with auth
 const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
   const headers: HeadersInit = {
