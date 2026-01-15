@@ -75,7 +75,7 @@ const Sidebar = ({ currentView, onViewChange, mobileOpen, onMobileClose }: Sideb
       `}>
         <div className="p-6 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleNavClick('DASHBOARD')}>
-            <img src="/brand.png" alt="Coven" className="w-8 h-8 object-contain" />
+            <img src={`${import.meta.env.BASE_URL}brand.png`} alt="Coven" className="w-8 h-8 object-contain" />
             <span className="text-xl font-bold text-white lg:block md:hidden tracking-tight">Coven</span>
           </div>
           <button onClick={onMobileClose} className="md:hidden p-2 text-slate-400 hover:text-white">
@@ -119,7 +119,7 @@ const MobileHeader = ({ onMenuClick, title }: { onMenuClick: () => void; title: 
     <button onClick={onMenuClick} className="p-2 text-slate-400 hover:text-white">
       <Menu className="w-5 h-5" />
     </button>
-    <img src="/brand.png" alt="Coven" className="w-6 h-6 object-contain" />
+    <img src={`${import.meta.env.BASE_URL}brand.png`} alt="Coven" className="w-6 h-6 object-contain" />
     <span className="text-white font-semibold">{title}</span>
   </div>
 );

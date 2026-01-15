@@ -74,7 +74,7 @@ const AuthView: React.FC<AuthViewProps> = ({ onLogin }) => {
       >
         <div className="text-center mb-6 md:mb-10">
             <div className="inline-flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-emerald-500 to-teal-700 rounded-xl mb-3 md:mb-4 shadow-lg shadow-emerald-900/50">
-                <img src="/brand.png" alt="Coven" className="w-6 h-6 md:w-8 md:h-8 object-contain" />
+                <img src={`${import.meta.env.BASE_URL}brand.png`} alt="Coven" className="w-6 h-6 md:w-8 md:h-8 object-contain" />
             </div>
             <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight mb-2">Welcome to Coven</h1>
             <p className="text-slate-400 text-sm md:text-base">Intelligent Covenant Management Platform</p>
