@@ -1,4 +1,5 @@
 from django.urls import path, include
+from django.http import JsonResponse
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -14,6 +15,10 @@ from .views_ai import (
     AIWhatChangedView, AIExtractLoanDNAView, RecalculateComplianceScoreView
 )
 
+# Health check endpoint for Railway
+def health_check(request):
+    return JsonResponse({'status': 'healthy', 'service': 'coven-api'})
+
 # Create router for viewsets
 router = DefaultRouter()
 router.register(r'loans', LoanViewSet, basename='loan')
@@ -23,6 +28,9 @@ router.register(r'risk-predictions', RiskPredictionViewSet, basename='risk-predi
 router.register(r'loan-dna', LoanDNAViewSet, basename='loan-dna')
 
 urlpatterns = [
+    # Health check for Railway
+    path('health/', health_check, name='health_check'),
+    
     # Authentication endpoints
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
