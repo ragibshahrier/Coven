@@ -112,7 +112,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onEnter }) => {
            />
            
            <div className="absolute w-20 h-20 md:w-24 md:h-24 bg-gradient-to-br from-emerald-900/80 to-slate-900 rounded-full backdrop-blur-md border border-emerald-500/30 shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)] flex items-center justify-center">
-              <img src="/brand_rounded.png" alt="Coven" className="w-12 h-12 md:w-16 md:h-16 object-contain" />
+              <img src={`${import.meta.env.BASE_URL}brand_rounded.png`} alt="Coven" className="w-12 h-12 md:w-16 md:h-16 object-contain" />
            </div>
 
            <motion.div 
