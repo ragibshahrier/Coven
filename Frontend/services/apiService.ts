@@ -5,7 +5,7 @@
 // Use relative URL when running with Vite proxy, or absolute URL for production
 // Update this to your deployed backend URL
 const API_BASE_URL = import.meta.env.PROD 
-  ? 'https://phantom-production-8482.up.railway.app/api'  // Your Railway backend URL
+  ? 'https://coven.onrender.com/api'  // Your Render backend URL
   : '/api';
 
 // Token management

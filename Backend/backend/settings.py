@@ -66,8 +66,8 @@ MIDDLEWARE = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://phantom-production-8482.up.railway.app",
-    "https://ragibshahrier.github.io/",  # add other domains if needed
+    "https://coven.onrender.com",
+    "https://ragibshahrier.github.io",
 ]
 
 ROOT_URLCONF = 'backend.urls'
