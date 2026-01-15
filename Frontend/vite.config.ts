@@ -7,9 +7,8 @@ export default defineConfig(({ mode }) => {
     const isProduction = mode === 'production';
     
     return {
-      // Base path for GitHub Pages - use repo name
-      // base: isProduction ? '/Coven/' : '/',
-      base: '/Coven/',
+      // Base path for GitHub Pages - use repo name in production, root in dev
+      base: isProduction ? '/Coven/' : '/',
       server: {
         port: 3000,
         host: '0.0.0.0',
