@@ -1,0 +1,33 @@
+# Render Blueprint - Deploy Backend only
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: coven-api
+    runtime: python
+    region: oregon
+    rootDir: Backend
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: coven-db
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OCRSPACE_API_KEY
+        sync: false
+
+databases:
+  - name: coven-db
+    databaseName: coven
+    user: coven_user
+    region: oregon
+    plan: free
