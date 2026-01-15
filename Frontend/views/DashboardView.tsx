@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { FileText, AlertTriangle, CheckCircle, Plus, TrendingDown, Clock, Zap, Home, Bell, X } from 'lucide-react';
 import { Card } from '../components/ui/Card';
-import { Loan, ComplianceStatus } from '../types';
+import { Loan, ComplianceStatus, RiskPrediction } from '../types';
 import ReactMarkdown from 'react-markdown';
 
 const ANIMATION_VARIANTS = {
@@ -40,12 +40,83 @@ const DashboardView: React.FC<DashboardViewProps> = ({ loans, onNavigate, onAddL
     acc + loan.covenants.filter(c => c.status === ComplianceStatus.Breached).length, 0);
   
   const avgScore = totalLoans > 0 ? Math.round(loans.reduce((acc, loan) => acc + loan.complianceScore, 0) / totalLoans) : 0;
+  // const avgScore = 87;
 
-  const highRiskPredictions = loans.flatMap(loan => 
-    (loan.riskPredictions || [])
-      .filter(p => p.probability > 50)
-      .map(p => ({ ...p, loanId: loan.id, borrower: loan.borrower }))
-  ).sort((a, b) => b.probability - a.probability).slice(0, 3);
+  // Compute risk alerts from BOTH stored predictions AND covenant statuses
+  // This ensures we always show correct risk levels based on current status
+  const highRiskPredictions = useMemo(() => {
+    const allRisks: Array<RiskPrediction & { loanId: string; borrower: string }> = [];
+    
+    loans.forEach(loan => {
+      // First, add stored predictions but validate/correct them
+      const storedPredictions = loan.riskPredictions || [];
+      
+      // Create a map of covenant IDs to their predictions
+      const predictionMap = new Map(storedPredictions.map(p => [p.covenantId, p]));
+      
+      // Go through each covenant and generate accurate risk predictions
+      loan.covenants.forEach(covenant => {
+        let probability: number;
+        let trend: 'improving' | 'stable' | 'deteriorating';
+        let predictedBreachDate: string;
+        let explanation: string;
+        
+        // ENFORCE LOGICAL RISK LEVELS BASED ON STATUS
+        switch (covenant.status) {
+          case ComplianceStatus.Breached:
+            probability = 100;
+            trend = 'deteriorating';
+            predictedBreachDate = 'Already breached';
+            explanation = `⚠️ CRITICAL: ${covenant.title} has been breached. Immediate action required. Current value: ${covenant.value || 'N/A'}, Threshold: ${covenant.threshold || 'N/A'}.`;
+            break;
+          case ComplianceStatus.AtRisk:
+            probability = Math.max(65, predictionMap.get(covenant.id)?.probability || 70);
+            trend = 'deteriorating';
+            predictedBreachDate = predictionMap.get(covenant.id)?.predictedBreachDate || 'Within 3 months';
+            explanation = `⚡ WARNING: ${covenant.title} is at risk of breach. Current value trending toward threshold. Recommended: Review and take preventive measures.`;
+            break;
+          case ComplianceStatus.Upcoming:
+            probability = predictionMap.get(covenant.id)?.probability || 35;
+            trend = 'stable';
+            predictedBreachDate = predictionMap.get(covenant.id)?.predictedBreachDate || 'N/A';
+            explanation = `📅 REMINDER: ${covenant.title} test is upcoming on ${covenant.dueDate}. Ensure compliance documentation is ready.`;
+            break;
+          case ComplianceStatus.Waived:
+            probability = 5;
+            trend = 'stable';
+            predictedBreachDate = 'N/A (Waived)';
+            explanation = `✅ Waived: ${covenant.title} has been waived. No action needed.`;
+            break;
+          case ComplianceStatus.Compliant:
+          default:
+            probability = Math.min(25, predictionMap.get(covenant.id)?.probability || 10);
+            trend = 'improving';
+            predictedBreachDate = 'N/A';
+            explanation = `✅ Compliant: ${covenant.title} is within acceptable thresholds.`;
+            break;
+        }
+        
+        // Only add to alerts if probability > 50 (high risk)
+        if (probability > 50) {
+          allRisks.push({
+            covenantId: covenant.id,
+            covenantTitle: covenant.title,
+            currentValue: covenant.value || 'Pending',
+            threshold: covenant.threshold || 'N/A',
+            probability,
+            trend,
+            predictedBreachDate,
+            explanation,
+            loanId: loan.id,
+            borrower: loan.borrower,
+          });
+        }
+      });
+    });
+    
+    // Sort by probability (highest first) and limit to top alerts
+    return allRisks.sort((a, b) => b.probability - a.probability).slice(0, 10);
+  }, [loans]);
 
   const recentEvents = loans.flatMap(loan => 
     (loan.timelineEvents || []).map(e => ({ ...e, loanId: loan.id, borrower: loan.borrower }))
@@ -120,6 +191,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ loans, onNavigate, onAddL
           <Card className="h-full flex flex-col justify-between hover:border-emerald-500/30 transition-colors">
             <div className="p-2 md:p-3 bg-slate-800 rounded-lg text-emerald-400 w-fit"><CheckCircle className="w-5 h-5 md:w-6 md:h-6"/></div>
             <div>
+              {/* <div className="text-2xl md:text-3xl font-bold text-white mt-3 md:mt-4">15</div> */}
               <div className="text-2xl md:text-3xl font-bold text-white mt-3 md:mt-4">{totalCovenants}</div>
               <div className="text-xs md:text-sm text-slate-400">Covenants</div>
             </div>

@@ -262,6 +262,7 @@ Covenants:
 
 For EACH covenant, analyze the risk and return a JSON array with predictions.
 Each prediction must have: probability, trend, predicted_breach_date, explanation.
+IMPORTANT: If status is "Breached", probability MUST be 100. If "At Risk", probability should be 60-90.
 
 Return ONLY valid JSON array, no other text."""
             
@@ -278,14 +279,43 @@ Return ONLY valid JSON array, no other text."""
                     for i, covenant in enumerate(financial_covenants):
                         if i < len(parsed):
                             pred = parsed[i]
+                            ai_probability = pred.get('probability', 50)
+                            
+                            # ENFORCE LOGICAL CONSTRAINTS based on status
+                            # Override AI probability if it doesn't make sense
+                            if covenant.status == 'Breached':
+                                # Breached = 100% risk, no exceptions
+                                probability = 100
+                                trend = 'deteriorating'
+                                breach_date = 'Already breached'
+                            elif covenant.status == 'At Risk':
+                                # At Risk should be at least 60%
+                                probability = max(60, min(95, ai_probability))
+                                trend = pred.get('trend', 'deteriorating')
+                                breach_date = pred.get('predicted_breach_date', 'Within 3 months')
+                            elif covenant.status == 'Waived':
+                                # Waived = very low risk
+                                probability = min(10, ai_probability)
+                                trend = 'stable'
+                                breach_date = 'N/A (Waived)'
+                            elif covenant.status == 'Compliant':
+                                # Compliant should be low risk
+                                probability = min(30, ai_probability)
+                                trend = pred.get('trend', 'stable')
+                                breach_date = pred.get('predicted_breach_date', 'N/A')
+                            else:  # Upcoming or other
+                                probability = ai_probability
+                                trend = pred.get('trend', 'stable')
+                                breach_date = pred.get('predicted_breach_date', 'N/A')
+                            
                             predictions.append({
                                 'covenantId': covenant.id,
                                 'covenantTitle': covenant.title,
                                 'currentValue': covenant.value or 'Pending',
                                 'threshold': covenant.threshold or 'N/A',
-                                'probability': pred.get('probability', 50),
-                                'trend': pred.get('trend', 'stable'),
-                                'predictedBreachDate': pred.get('predicted_breach_date', 'N/A'),
+                                'probability': probability,
+                                'trend': trend,
+                                'predictedBreachDate': breach_date,
                                 'explanation': pred.get('explanation', 'Analysis pending.')
                             })
             except (json.JSONDecodeError, KeyError):

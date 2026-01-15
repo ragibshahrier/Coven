@@ -30,9 +30,22 @@ User = get_user_model()
 # ============================================
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Custom JWT token serializer that includes user data in response."""
+    """Custom JWT token serializer that includes user data in response.
+    Allows login with either username or email.
+    """
     
     def validate(self, attrs):
+        # Allow login with email - convert email to username if needed
+        username_or_email = attrs.get('username', '')
+        
+        # Check if it looks like an email
+        if '@' in username_or_email:
+            try:
+                user = User.objects.get(email=username_or_email)
+                attrs['username'] = user.username
+            except User.DoesNotExist:
+                pass  # Let the parent validation handle the error
+        
         data = super().validate(attrs)
         
         # Add user data to response

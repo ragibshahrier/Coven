@@ -27,7 +27,10 @@ import apiService, {
   createTimelineEvent as apiCreateTimelineEvent,
   createLoanDNA as apiCreateLoanDNA,
   createRiskPrediction as apiCreateRiskPrediction,
+  updateProfile as apiUpdateProfile,
+  setStoredUser,
 } from './services/apiService';
+import { UserProfile } from './views/SettingsView';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -129,6 +132,7 @@ const App: React.FC = () => {
   const [selectedLoanId, setSelectedLoanId] = useState<string | undefined>(undefined);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
   // Modal States
   const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
@@ -149,6 +153,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isAuthenticated) {
       loadLoans();
+      loadUserProfile();
     }
   }, [isAuthenticated]);
 
@@ -157,8 +162,61 @@ const App: React.FC = () => {
     if (checkAuth()) {
       setIsAuthenticated(true);
       setView('DASHBOARD');
+      // Load user from storage on mount
+      const storedUser = getStoredUser();
+      if (storedUser) {
+        setCurrentUser({
+          id: storedUser.id,
+          name: storedUser.name,
+          email: storedUser.email,
+          username: storedUser.username,
+          role: storedUser.role,
+          department: storedUser.department,
+          firstName: storedUser.first_name || storedUser.firstName,
+          lastName: storedUser.last_name || storedUser.lastName,
+        });
+      }
     }
   }, []);
+
+  const loadUserProfile = async () => {
+    try {
+      const storedUser = getStoredUser();
+      if (storedUser) {
+        setCurrentUser({
+          id: storedUser.id,
+          name: storedUser.name,
+          email: storedUser.email,
+          username: storedUser.username,
+          role: storedUser.role,
+          department: storedUser.department,
+          firstName: storedUser.first_name || storedUser.firstName,
+          lastName: storedUser.last_name || storedUser.lastName,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load user profile:', error);
+    }
+  };
+
+  const handleUpdateProfile = async (updates: { firstName: string; lastName: string; role: string; department: string }) => {
+    const updatedUser = await apiUpdateProfile({
+      first_name: updates.firstName,
+      last_name: updates.lastName,
+      role: updates.role,
+      department: updates.department,
+    });
+    setCurrentUser({
+      id: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      username: updatedUser.username,
+      role: updatedUser.role,
+      department: updatedUser.department,
+      firstName: updatedUser.first_name || updatedUser.firstName,
+      lastName: updatedUser.last_name || updatedUser.lastName,
+    });
+  };
 
   const loadLoans = async () => {
     setIsLoading(true);
@@ -246,12 +304,14 @@ const App: React.FC = () => {
     setIsAuthenticated(true);
     setView('DASHBOARD');
     loadLoans(); // Load loans after login
+    loadUserProfile(); // Load user profile after login
   };
 
   const handleLogout = () => {
     apiLogout(); // Clear tokens
     setIsAuthenticated(false);
     setLoans([]); // Clear loans
+    setCurrentUser(null); // Clear user
     setView('AUTH');
   };
 
@@ -807,7 +867,11 @@ const App: React.FC = () => {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                  >
-                    <SettingsView onLogout={handleLogout} />
+                    <SettingsView 
+                      onLogout={handleLogout} 
+                      user={currentUser}
+                      onUpdateProfile={handleUpdateProfile}
+                    />
                  </motion.div>
               )}
             </AnimatePresence>

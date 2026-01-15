@@ -3,7 +3,10 @@
  */
 
 // Use relative URL when running with Vite proxy, or absolute URL for production
-const API_BASE_URL = '/api';
+// Update this to your deployed backend URL
+const API_BASE_URL = import.meta.env.PROD 
+  ? 'https://phantom-production-8482.up.railway.app/api'  // Your Railway backend URL
+  : '/api';
 
 // Token management
 let accessToken: string | null = localStorage.getItem('accessToken');
@@ -167,6 +170,25 @@ export const getProfile = async () => {
   const response = await fetchWithAuth('/user/profile/');
   if (!response.ok) throw new Error('Failed to fetch profile');
   return response.json();
+};
+
+export interface ProfileUpdateData {
+  first_name?: string;
+  last_name?: string;
+  role?: string;
+  department?: string;
+}
+
+export const updateProfile = async (data: ProfileUpdateData) => {
+  const response = await fetchWithAuth('/user/profile/', {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to update profile');
+  const updatedUser = await response.json();
+  // Update stored user
+  setStoredUser(updatedUser);
+  return updatedUser;
 };
 
 // ============================================
@@ -572,6 +594,7 @@ const apiService = {
   register,
   logout,
   getProfile,
+  updateProfile,
   isAuthenticated,
   getStoredUser,
   setStoredUser,
